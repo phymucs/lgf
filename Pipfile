@@ -3,8 +3,6 @@ name = "pypi"
 url = "https://pypi.org/simple"
 verify_ssl = true
 
-[dev-packages]
-
 [packages]
 torch = "*"
 torchvision = "*"
@@ -13,12 +11,14 @@ tqdm = "*"
 imageio = "*"
 sklearn = "*"
 matplotlib = "*"
-pymongo = "*"
 tensorboardx = {editable = true,git = "git://github.com/lanpa/tensorboardX.git"}
-gputil = "*"
-tensorflow = "*"
 pandas = "*"
 pytorch-ignite = "*"
+pyro-ppl = "*"
 
 [requires]
 python_version = "3.7"
+
+[dev-packages]
+ipdb = "*"
+pytest = "*"

@@ -1,10 +1,15 @@
 # README
 
-Code release for [Localised Generative Flows](https://openreview.net/forum?id=SyegvgHtwr&noteId=r1x0meQ2vH) (LGFs).
+Code release for [Localised Generative Flows](https://arxiv.org/abs/1909.13833) (LGFs).
 
 ## Usage
 
 ### Setup
+
+1. Inside the script directory, run
+
+        $ git submodule init
+        $ git submodule update
 
 1. Make sure you have `pipenv` installed. Run e.g. `pip install pipenv` if not.
 2. From the same directory as `Pipfile`, run `pipenv install`

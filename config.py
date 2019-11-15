@@ -1,242 +1,359 @@
-def two_uniforms(baseline=False):
-    config = {
-        "dataset": "2uniforms",
+import copy
 
-        "model": "maf",
 
+def get_config(dataset, model, use_baseline):
+    return {
+        "dataset": dataset,
+        "model": model,
+        **get_config_base(dataset, model, use_baseline)
+    }
+
+
+def get_config_base(dataset, model, use_baseline):
+    if dataset in ["2uniforms", "8gaussians", "checkerboard", "2spirals", "rings"]:
+        return get_2d_config(dataset, model, use_baseline)
+
+    elif dataset in ["power", "gas", "hepmass", "miniboone"]:
+        return get_uci_config(dataset, model, use_baseline)
+
+    elif dataset in ["mnist", "fashion-mnist", "cifar10", "svhn"]:
+        return get_images_config(dataset, model, use_baseline)
+
+    else:
+        assert False, f"Invalid dataset {dataset}"
+
+
+def get_2d_config(dataset, model, use_baseline):
+    if model in ["maf", "flat-realnvp"]:
+        config = {
+            "num_density_layers": 20 if use_baseline else 5,
+            "g_hidden_channels": [50] * 4,
+
+            "st_nets": [10] * 2,
+            "p_nets": [50] * 4,
+            "q_nets": [50] * 4,
+        }
+
+    elif model == "sos":
+        config = {
+            "num_density_layers": 3 if use_baseline else 2,
+            "num_polynomials_per_layer": 2,
+            "polynomial_degree": 4,
+
+            "st_nets": [40] * 2,
+            "p_nets": [40] * 4,
+            "q_nets":  [40] * 4
+        }
+
+    elif model == "nsf":
+        config = {
+            "num_density_layers": 2,
+            "num_density_layers": 2,
+            "num_bins": 64 if use_baseline else 24,
+            "num_hidden_channels": 32,
+            "num_hidden_layers": 2,
+            "tail_bound": 5,
+            "autoregressive": False,
+            "dropout_probability": 0.,
+
+            "st_nets": [24] * 2,
+            "p_nets": [24] * 3,
+            "q_nets": [24] * 3
+        }
+
+    elif model == "bnaf":
+        config = {
+            "num_density_layers": 1,
+            "num_hidden_layers": 2,
+            "hidden_channels_factor": 50 if use_baseline else 45,
+            "activation": "soft-leaky-relu",
+
+            "st_nets": [24] * 2,
+            "p_nets": [24] * 3,
+            "q_nets": [24] * 3,
+
+            "max_epochs": 1000,
+            "max_bad_valid_epochs": 1000,
+            "test_batch_size": 1000
+        }
+
+    else:
+        assert False, f"Invalid model `{model}' for dataset `{dataset}'"
+
+    return {
+        "num_u_channels": 0 if use_baseline else 1,
+
+        "dequantize": False,
+
+        "batch_norm": False,
+
+        "max_epochs": 1000,
+        "max_grad_norm": None,
+        "early_stopping": True,
+        "max_bad_valid_epochs": 1000,
         "train_batch_size": 1000,
         "valid_batch_size": 1000,
         "test_batch_size": 10000,
 
-        "lr": 1e-3,
-        "max_bad_valid_epochs": 300,
-        "max_epochs": 300,
+        "opt": "adam",
+        "lr": 1e-2,
+        "lr_schedule": "none",
+        "weight_decay": 0.,
         "epochs_per_test": 5,
-        "epochs_per_checkpoint": 50
+
+        "num_train_elbo_samples": 10 if not use_baseline else 1,
+        "num_valid_elbo_samples": 10 if not use_baseline else 1,
+        "num_test_elbo_samples": 100 if not use_baseline else 1,
+
+        **config,
     }
 
-    if baseline:
+
+def something(num_datapoints, batch_size, max_steps, increase_factor):
+    steps_per_epoch = num_datapoints // batch_size
+    max_epochs = max_steps // steps_per_epoch
+    return max_epochs * 10
+
+    num_datapoints = 29_556
+    original_batch_size = 128
+    original_steps_per_epoch = num_datapoints // original_batch_size
+    original_max_steps = 200_000
+    original_max_epochs = original_max_steps // original_steps_per_epoch
+    increase_factor = 10
+
+
+def get_uci_config(dataset, model, use_baseline):
+    if model in ["maf", "flat-realnvp"]:
+        if dataset in ["gas", "power"]:
+            config = {
+                "num_u_channels": 0 if use_baseline else 2,
+                "num_density_layers": 10,
+                "g_hidden_channels": [200] * 2 if use_baseline else [100] * 2,
+
+                "st_nets": [100] * 2,
+                "p_nets": [200] * 2,
+                "q_nets": [200] * 2,
+            }
+
+        elif dataset in ["hepmass", "miniboone"]:
+            if use_baseline:
+                num_u_channels = 0
+            elif dataset == "hepmass":
+                num_u_channels = 5
+            else:
+                num_u_channels = 10
+
+            config = {
+                "num_u_channels": num_u_channels,
+                "num_density_layers": 10,
+                "g_hidden_channels": [512] * 2 if use_baseline else [128] * 2,
+
+                "st_nets": [128] * 2,
+                "p_nets": [512] * 2,
+                "q_nets": [512] * 2
+            }
+
+    elif model == "sos":
+        assert use_baseline
+        config = {
+            "num_u_channels": 0,
+
+            "num_density_layers": 8,
+            "g_hidden_channels": [200] * 2,
+            "num_polynomials_per_layer": 5,
+            "polynomial_degree": 4,
+
+            "lr": 1e-3,
+            "opt": "sgd"
+        }
+
+    elif model == "nsf":
+        if dataset in ["power", "gas"]:
+            config = {
+                "num_u_channels": 0 if use_baseline else 2,
+                "num_density_layers": 10 if use_baseline else 7,
+                "num_hidden_layers": 2,
+                "num_hidden_channels": 256,
+                "num_bins": 8,
+                "dropout_probability": 0. if dataset == "power" else 0.1,
+
+                "st_nets": [120] * 2,
+                "p_nets": [240] * 2,
+                "q_nets": [240] * 2,
+
+                "lr": 0.0005,
+                "train_batch_size": 5120
+            }
+
+            # We convert the presecribed number of steps into epochs
+            if dataset == "gas":
+                config["max_epochs"] = (400_000 * 512) // 852_174
+            elif dataset == "power":
+                config["max_epochs"] = (400_000 * 512) // 1_615_917
+
+            # We run for a bit longer to ensure convergence
+            config["max_epochs"] += 100
+
+        elif dataset == "miniboone":
+            config = {
+                "num_u_channels": 0 if use_baseline else 10,
+
+                "num_density_layers": 10 if use_baseline else 4,
+                "num_hidden_layers": 1,
+                "num_hidden_channels": 32,
+                "num_bins": 4,
+                "dropout_probability": 0.2,
+
+                "st_nets": [32] * 2,
+                "p_nets": [64] * 2,
+                "q_nets": [64] * 2,
+
+                # We increase the lr and batch size by a factor of 10 from the prescribed values
+                "lr": 0.0003 * 10,
+                "train_batch_size": 128 * 10,
+
+                # We convert the presecribed number of steps into epochs
+                "max_epochs": (200_000 * 128) // 29_556
+            }
+
+        elif dataset == "hepmass":
+            assert False, f"NSF is not yet tested on Hepmass"
+
         config = {
             **config,
-            "num_density_layers": 10,
-            "g": {
-                "hidden_units": [50] * 4
-            },
-            "num_u_channels": 0
+            "tail_bound": 3,
+            "autoregressive": True,
+            "batch_norm": False,
+            "max_grad_norm": 5,
+
+            "lr_schedule": "cosine"
         }
 
     else:
-        config = {
-            **config,
-            "num_density_layers": 5,
-            "g": {
-                "hidden_units": [10] * 2
-            },
-            "num_u_channels": 1,
-            "st": {
-                "hidden_units": [10] * 2,
-            },
-            "p": {
-                "hidden_units": [50] * 4,
-            },
-            "q": {
-                "hidden_units": [50] * 4,
-            },
-            "num_train_elbo_samples": 10,
-            "num_test_elbo_samples": 100,
-            "num_valid_elbo_samples": 100,
-        }
+        assert False, f"Invalid model `{model}' for dataset `{dataset}''"
 
-    return config
-
-
-def two_d(dataset, baseline=False):
     config = {
-        "dataset": dataset,
+        "dequantize": False,
 
-        "model": "maf",
+        "batch_norm": True,
+        "batch_norm_apply_affine": True,
+        "batch_norm_use_running_averages": False,
 
-        "train_batch_size": 1000,
-        "valid_batch_size": 1000,
-        "test_batch_size": 10000,
-
-        "lr": 1e-3,
-        "max_bad_valid_epochs": 500,
-        "max_epochs": 500,
-        "epochs_per_test": 5,
-        "epochs_per_checkpoint": 50
-    }
-
-    if baseline:
-        config = {
-            **config,
-            "num_density_layers": 20,
-            "g": {
-                "hidden_units": [50] * 4
-            },
-            "num_u_channels": 0
-        }
-
-    else:
-        config = {
-            **config,
-            "num_density_layers": 5,
-            "g": {
-                "hidden_units": [50] * 4
-            },
-            "num_u_channels": 1,
-            "st": {
-                "hidden_units": [10] * 2,
-            },
-            "p": {
-                "hidden_units": [50] * 4,
-            },
-            "q": {
-                "hidden_units": [50] * 4,
-            },
-            "num_train_elbo_samples": 10,
-            "num_test_elbo_samples": 100,
-            "num_valid_elbo_samples": 100,
-        }
-
-    return config
-
-
-def uci(dataset, baseline=False):
-    config = {
-        "dataset": dataset,
-
-        "model": "maf",
-
+        "early_stopping": True,
         "train_batch_size": 1000,
         "valid_batch_size": 5000,
         "test_batch_size": 5000,
 
+        "opt": "adam",
         "lr": 1e-3,
-        "max_bad_valid_epochs": 30,
-        "max_epochs": 1000,
+        "lr_schedule": "none",
+        "weight_decay": 0.,
+        "max_bad_valid_epochs": 5000,
+        "max_epochs": 5000,
+        "max_grad_norm": None,
         "epochs_per_test": 5,
-        "epochs_per_checkpoint": 50
+
+        "num_train_elbo_samples": 1 if not use_baseline else 1,
+        "num_valid_elbo_samples": 5 if not use_baseline else 1,
+        "num_test_elbo_samples": 10 if not use_baseline else 1,
+
+        **config
     }
-
-    if dataset in ["gas", "power"]:
-        if baseline:
-            config = {
-                **config,
-                "num_density_layers": 10,
-                "g": {
-                    "hidden_units": [200] * 2
-                },
-                "num_u_channels": 0
-            }
-
-        else:
-            config = {
-                **config,
-                "num_density_layers": 10,
-                "g": {
-                    "hidden_units": [100] * 2
-                },
-                "num_u_channels": 2,
-                "st": {
-                    "hidden_units": [100] * 2,
-                },
-                "p": {
-                    "hidden_units": [200] * 2,
-                },
-                "q": {
-                    "hidden_units": [200] * 2,
-                },
-                "num_train_elbo_samples": 1,
-                "num_valid_elbo_samples": 5,
-                "num_test_elbo_samples": 10
-            }
-
-    elif dataset in ["hepmass", "miniboone"]:
-        if baseline:
-            config = {
-                **config,
-                "num_density_layers": 10,
-                "g": {
-                    "hidden_units": [512] * 2
-                },
-                "num_u_channels": 0
-            }
-
-        else:
-            config = {
-                **config,
-                "num_density_layers": 10,
-                "g": {
-                    "hidden_units": [128] * 2
-                },
-                "num_u_channels": 5 if dataset == "hepmass" else 10,
-                "st": {
-                    "hidden_units": [128] * 2,
-                },
-                "p": {
-                    "hidden_units": [512] * 2,
-                },
-                "q": {
-                    "hidden_units": [512] * 2,
-                },
-                "num_train_elbo_samples": 1,
-                "num_valid_elbo_samples": 5,
-                "num_test_elbo_samples": 10
-            }
 
     return config
 
 
-def images(dataset, baseline=False):
-    config = {
-        "dataset": dataset,
-        "model": "multiscale-realnvp",
+def get_images_config(dataset, model, use_baseline):
+    if model == "multiscale-realnvp":
+        if use_baseline:
+            config = {
+                "g_hidden_channels": [64] * 8,
+                "num_u_channels": 0
+            }
 
-        "train_batch_size": 100,
-        "valid_batch_size": 500,
-        "test_batch_size": 500,
+        else:
+            config = {
+                "g_hidden_channels": [64] * 4,
+                "num_u_channels": 1,
+                "st_nets": [8] * 2,
+                "p_nets": [64] * 2,
+                "q_nets": [64] * 2
+            }
 
-        "lr": 1e-4,
-        "max_bad_valid_epochs": 50,
-        "max_epochs": 1000,
-        "epochs_per_test": 1,
-        "epochs_per_checkpoint": 50
-    }
+        config["early_stopping"] = True
+        config["train_batch_size"] = 100
+        config["valid_batch_size"] = 500
+        config["test_batch_size"] = 500
+        config["opt"] = "adam"
+        config["lr"] = 1e-4
+        config["weight_decay"] = 0.
 
-    if baseline:
-        config = {
-            **config,
-            "g": {
-                "num_blocks": 8,
-                "num_hidden_channels_per_block": 64
-            },
-            "num_u_channels": 0
-        }
+        if dataset in ["cifar10", "svhn"]:
+            config["logit_tf_lambda"] = 0.05
+            config["logit_tf_scale"] = 256
+
+        elif dataset in ["mnist", "fashion-mnist"]:
+            config["logit_tf_lambda"] = 1e-6
+            config["logit_tf_scale"] = 256
+
+    elif model == "glow":
+        if use_baseline:
+            config = {
+                "num_scales": 3,
+                "num_steps_per_scale": 32,
+                "g_num_hidden_channels": 512,
+                "num_u_channels": 0,
+                "valid_batch_size": 500,
+                "test_batch_size": 500
+            }
+
+        else:
+            config = {
+                "num_scales": 2,
+                "num_steps_per_scale": 32,
+                "g_num_hidden_channels": 256,
+                "num_u_channels": 1,
+                "st_nets": 64,
+                "p_nets": 128,
+                "q_nets": 128,
+                "valid_batch_size": 100,
+                "test_batch_size": 100
+            }
+
+        config["early_stopping"] = False
+        config["train_batch_size"] = 64
+        config["opt"] = "adamax"
+        config["lr"] = 5e-4
+
+        if dataset in ["cifar10"]:
+            config["weight_decay"] = 0.1
+        else:
+            config["weight_decay"] = 0.
+
+        config["centering_tf_scale"] = 256
 
     else:
-        config = {
-            **config,
-            "g": {
-                "num_blocks": 4,
-                "num_hidden_channels_per_block": 64,
-            },
-            "num_u_channels": 1,
-            "st": {
-                "num_blocks": 2,
-                "num_hidden_channels_per_block": 8,
-            },
-            "p": {
-                "num_blocks": 2,
-                "num_hidden_channels_per_block": 64,
-            },
-            "q": {
-                "num_blocks": 2,
-                "num_hidden_channels_per_block": 64,
-            },
-            "num_train_elbo_samples": 1,
-            "num_valid_elbo_samples": 5,
-            "num_test_elbo_samples": 10
-        }
+        assert False, f"Invalid model {model} for dataset {dataset}"
+
+    config = {
+        **config,
+
+        "dequantize": True,
+
+        "batch_norm": True,
+        "batch_norm_apply_affine": use_baseline,
+        "batch_norm_use_running_averages": True,
+        "batch_norm_momentum": 0.1,
+
+        "lr_schedule": "none",
+        "max_bad_valid_epochs": 50,
+        "max_grad_norm": None,
+        "max_epochs": 1000,
+        "epochs_per_test": 1,
+
+        "num_train_elbo_samples": 1 if not use_baseline else 1,
+        "num_valid_elbo_samples": 5 if not use_baseline else 1,
+        "num_test_elbo_samples": 10 if not use_baseline else 1
+    }
 
     return config
